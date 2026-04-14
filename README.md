@@ -70,17 +70,47 @@ writes to it during execution
 
 Now enough theories... let's dive into the important part
 
+## Definitions
+We start by creating a file, i will call it m6502.c, in the begining i will write the code below:
 
 ```cpp
-#define FLAG_C 0x01 // Carry
-#define FLAG_Z 0x02 // Zero
-#define FLAG_I 0x04 // Interrupt Disable
-#define FLAG_D 0x08 // Decimal
-#define FLAG_B 0x10 // Break 
-#define FLAG_U 0x20 // Useless always 1(true)
-#define FLAG_V 0x40 // Overflow
-#define FLAG_N 0x80 // Negative
+#define FLAG_C 0b00000001 // Carry
+#define FLAG_Z 0b00000010 // Zero
+#define FLAG_I 0b00000100 // Interrupt Disable
+#define FLAG_D 0b00001000 // Decimal 
+#define FLAG_B 0b00010000 // Break
+#define FLAG_U 0b00100000 // Useless
+#define FLAG_V 0b01000000 // Overflow
+#define FLAG_N 0b10000000 // Negative
 ```
+
+The code above defines CPU flags, every flag has an 8-bit value, and the reason why the values is assigned int that order is because we can combine multiple flags in one flag state for 
+example `FLAG_C` and `FLAG_Z`, in code `FLAG_C | FLAG_Z` and we use the or `|` operator to combine them.
+
+The second thing we need is helper macros for CPU behaviors
+
+```cpp
+#define SET_FLAG(cpu, flag, cond) (cpu->flags = (cond) ? (cpu->flags | flag) : (cpu->flags & ~flag))
+#define GET_FLAG(cpu, flag) (cpu->flags & flag)
+#define PAGE_CROSSED(base, addr) ((base & 0xFF00) != (addr & 0xFF00))
+#define IS_ZERO(r) (r == 0)
+#define IS_NEGATIVE(r) (r & 0b10000000)
+#define IS_CARRY(r) (r >= 0b10000000)
+```
+> The `#define SET_FLAG(cpu, flag, cond) (cpu->flags = (cond) ? (cpu->flags | flag) : (cpu->flags & ~flag))` macros is used to set or clear a specific flag inside the CPU state register.
+> If the condition is true, the flag bit is turned on. If the condition is false, the flag bit is turned off.
+
+> The `#define GET_FLAG(cpu, flag) (cpu->flags & flag)` macro checks whether a specific flag is currently set.
+> It returns a non zero value if the flag is active, otherwise it returns zero.
+
+> The `#define PAGE_CROSSED(base, addr) ((base & 0xFF00) != (addr & 0xFF00))` macro checks whether 2 memory addresses are in different 256 byte pages.
+> It's used to detec when an operation crosses a page boundary, which can affect CPU timing.
+
+> The `#define IS_ZERO(r) (r == 0)` checks if a value is zero. This is commonly used to update the zero flag.
+
+> The `#define IS_NEGATIVE(r) (r & 0b10000000)` checks if the most significant bit (bit 7) is set, which indicates a negative value in 8-bit signed representation.
+
+> The `#define IS_CARRY(r) (r >= 0b10000000)` checks if a value has produced a carry beyond 8-bits. This is used to simulate the carry flag in arithmetic operations.
 
 ```cpp
 typedef struct {
