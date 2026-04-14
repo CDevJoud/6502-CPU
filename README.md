@@ -112,6 +112,35 @@ The second thing we need is helper macros for CPU behaviors
 
 > The `#define IS_CARRY(r) (r >= 0b10000000)` checks if a value has produced a carry beyond 8-bits. This is used to simulate the carry flag in arithmetic operations.
 
+We continue by including more C type definitions:
+
+```cpp
+typedef unsigned char Byte;
+typedef unsigned short Word;
+typedef unsigned long long Qword;
+```
+Now we define a struct called `Instruction`. This will serve as a container which will holds the 1 byte CPU operation code and an additional 2 bytes values, which can represent either
+immediate data or a pointer to memory.
+```cpp
+typedef struct {
+	Byte inst;
+	Word ptr;
+}Instruction;
+```
+And now we define our MOS6502 CPU struct it contains the main components of the CPU: `Accumulator`, `Index Register X`, `Index Register Y`, `Stack Pointer`, `Program Counter`, `Processor 
+Status`, `Memory` and `CPU Cycles Counter`. It is worth noting that in real hardware design, memory (RAM) is not part of the CPU itself. we could model memory as a separate structure. 
+However, for the sake of simplicity, we include it directly inside the the CPU and store it as an array on the host
+```
+typedef struct {
+	Byte A, X, Y;
+	Byte SP;
+	Word PC;
+	Byte flags;
+	Byte mem[0xFFFF];
+	Qword cycles;
+}M6502;
+```
+
 ```cpp
 typedef struct {
     Byte A, X, Y;     // Accumulator, Index Register X and Y
