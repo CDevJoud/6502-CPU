@@ -128,28 +128,100 @@ typedef struct {
 }Instruction;
 ```
 And now we define our MOS6502 CPU struct it contains the main components of the CPU: `Accumulator`, `Index Register X`, `Index Register Y`, `Stack Pointer`, `Program Counter`, `Processor 
-Status`, `Memory` and `CPU Cycles Counter`. It is worth noting that in real hardware design, memory (RAM) is not part of the CPU itself. we could model memory as a separate structure. 
-However, for the sake of simplicity, we include it directly inside the the CPU and store it as an array on the host
-```
+Status`, `Memory` and `CPU Cycles Counter`. **It is worth noting that in real hardware design, memory (RAM) is not part of the CPU itself. we could model memory as a separate structure. 
+However, for the sake of simplicity, we include it directly inside the the CPU and store it as an array on the host**
+```cpp
 typedef struct {
-	Byte A, X, Y;
-	Byte SP;
-	Word PC;
-	Byte flags;
-	Byte mem[0xFFFF];
-	Qword cycles;
+	Byte A, X, Y; 		// Acummulator, Register X and Y
+	Byte SP;	  		// Stack Pointer
+	Word PC;	  		// Program Counter
+	Byte flags;	  		// Processor Status
+	Byte mem[0xFFFF];   // MOS 6502 memory on the host stack
+	Qword cycles;		// CPU cycles counter
 }M6502;
 ```
 
+## Function Definitions
+The first function that we need is a way to clear memory or an array, the C standard library does provide `void* __cdecl memset(void* _Dst, int _Val, size_t _Size)` to clear memory but
+because this project is simple enough we don't really need to depend on any sort of libraries at all so we can implement our function instead:
 ```cpp
-typedef struct {
-    Byte A, X, Y;     // Accumulator, Index Register X and Y
-    Byte SP;          // Stack Pointer
-    Word PC;          // Program Counter
-    Byte flags;       // Process Status
-    Byte mem[0xFFFF]; // 6502 Memory on the host stack
-    Qword cycles;     // CPU cycles useful to count amount of instruction done by the CPU
-}M6502;
+/*******************************************************************************
+	This function iterates over a block of memory and sets each byte to zero.
+	It will be used to initialize or reset memory when needed
+*******************************************************************************/
+void zOut(
+	Byte* mem,
+	const Qword size
+) {
+	for (Qword i = 0; i < size; i++) {
+		*(mem + i) = 0;
+	}
+}
 ```
+
+Now we need 3 more functions they will server a way to read and write to the MOS 6502 memory, they are `readByte()`, `readWord()` and `writeByte`
+```cpp
+Byte readByte(
+    M6502* cpu,
+    Word addr
+) {
+    // Check if the address is within valid memory range
+    // If valid, return the byte at that address
+    // Otherwise, return 0x00 as a safe default
+    return (addr >= 0x0000 && addr <= 0xFFFF) ? *(cpu->mem + addr) : 0x00;
+}
+
+Word readWord(
+    M6502* cpu,
+    Word addr
+) {
+    // Read the low byte from the given address
+    Byte low = readByte(cpu, addr);
+
+    // Read the high byte from the next address
+    Byte high = readByte(cpu, (Word)(addr + 1));
+
+    // Combine low and high bytes into a 16-bit value (little-endian)
+    return (Word)((Word)low | ((Word)high << 8));
+}
+
+void writeByte(
+    M6502* cpu,
+    Word addr,
+    Byte value
+) {
+    // Only write if the address is within valid memory range
+    if (addr >= 0x0000 && addr <= 0xFFFF) {
+        // Store the value at the given memory location
+        *(cpu->mem + addr) = value;
+    }
+}
+```
+
+And the last 2 functions are `fetchInstruction()` and `executeInstruction()`. These will we leave them empty as we will handle all our CPU logic in there
+```cpp
+
+Instruction fetchInstruction(
+	M6502* cpu
+) {
+	// Empty
+}
+
+int executeInstruction(
+	M6502* cpu,
+	Instruction inst
+) {
+	// Empty
+}
+
+```
+Seperating these 2 functions is **important** because it follows how a real CPU operates internally. A CPU doesn't execute instructions directly from memory in one step, intead it first
+fetches the instruction and the executes it.
+
+The `fetchInstruction()` function is responsible for reading the next instruction from memory using the program counter and preparing it for execution, on the other hand 
+`executeInstruction()` takes that instruction and performs the correct operation such as modifying registers, updating flags, or changing the program counter.
+
+By keeping these 2 steps separate, the design becomes clearer and easier to understand. It also makes the system more flexible, since it change how instructions are read or executed.
+
 
 Emulating a CPU or even simple one could be easily acheivable for simple CPU instructions 
