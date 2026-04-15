@@ -231,7 +231,7 @@ void init6502(
 	M6502* cpu
 ) {
 	cpu->A = cpu->X = cpu->Y = 0;
-	cpu->PC = 0x8000;
+	cpu->PC = 0x0000;
 	cpu->flags = FLAG_Z;
 	cpu->SP = 0x01FF;
 	cpu->cycles = 0;
@@ -240,7 +240,7 @@ void init6502(
 ```
 This function initializes the CPU to a known starting state.
 
-It resets all registers(A, X, Y) to zero, sets the Program Counter `PC` to the address `0x8000`, and initializes the flags register. The stack pointer is set to
+It resets all registers(A, X, Y) to zero, sets the Program Counter `PC` to the address `0x0000`, and initializes the flags register. The stack pointer is set to
 it's default position, and the entire memory is cleared to zero.
 
 ---
@@ -405,10 +405,258 @@ const Byte app[29] = {
     STA_ABS_X, 0x00, 0x02,
     INX, // Increment the X register by one
     JMP, 0x02, 0x00, // This instructions jump to a memory location, basically it changes the Program Counter to new memory address
-    BRK,
+    BRK, // End of execution
 
     'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!', 0
 };
 ```
+
+Now we need to update our `fetchInstruction()` and `executeInstruction()`:
+```cpp
+Instruction fetchInstruction(
+	M6502* cpu
+) {
+	// code
+	// ...
+
+
+	inst.inst = readByte(cpu, cpu->PC++);
+	switch(inst.int) {
+
+	case LDA_ABS_X:
+	{
+		// Read 16-bit base address (low + high byte) from memory
+		inst.ptr = readWord(cpu, cpu->PC);
+
+		// Move PC forward by 2 bytes (size of address)
+		cpu->PC += 2;
+	} break;
+
+	case STA_ABS_X:
+	{
+		// Read 16-bit base address where value will be stored
+		inst.ptr = readWord(cpu, cpu->PC);
+
+		// Advance PC past the address
+		cpu->PC += 2;
+	} break;
+
+	case JMP:
+	{
+		// Read 16-bit target address to jump to
+		inst.ptr = readWord(cpu, cpu->PC);
+
+		// Advance PC past the address (execution will later jump)
+		cpu->PC += 2;
+	} break;
+
+	case INX:
+	{
+		// INX has no operand, so no extra bytes to read
+		inst.ptr = 0;
+	} break;
+	default:
+		inst.ptr = readByte(cpu, cpu->PC++);
+		break;
+	};
+	return inst;
+}
+```
+
+```cpp
+int executeInstruction(
+	M6502* cpu,
+	Instruction inst
+) {
+	switch (inst.inst) {
+		// ...
+		// above code
+	case LDA_ABS_X:
+	{
+		// Calculate final address (base + X offset)
+		Word addr = inst.ptr + cpu->X;
+
+		// Load value from memory into accumulator
+		cpu->A = readByte(cpu, addr);
+
+		// Update Zero and Negative flags based on result
+		SET_FLAG(cpu, FLAG_Z, IS_ZERO(cpu->A));
+		SET_FLAG(cpu, FLAG_N, IS_NEGATIVE(cpu->A));
+
+		// Base cycle cost
+		cpu->cycles += 4;
+
+		// Add extra cycle if page boundary is crossed
+		if (PAGE_CROSSED(inst.ptr, addr)) {
+			cpu->cycles++;
+		}
+	} break;
+
+	case BEQ:
+	{
+		// Relative offset for branch
+		Byte offset = inst.ptr;
+
+		// Base cycle cost
+		cpu->cycles += 2;
+
+		// Branch only if Zero flag is set
+		if (GET_FLAG(cpu, FLAG_Z)) {
+			Word base = cpu->PC;
+
+			// Calculate new address using relative offset
+			Word addr = base + (Byte)offset;
+
+			cpu->cycles++;
+
+			// Extra cycle if page boundary is crossed
+			if (PAGE_CROSSED(base, addr)) {
+				cpu->cycles++;
+			}
+
+			// Update program counter (perform branch)
+			cpu->PC = addr;
+		}
+	} break;
+
+	case STA_ABS_X:
+	{
+		// Calculate final address (base + X offset)
+		inst.ptr += cpu->X;
+
+		// Store accumulator value into memory
+		writeByte(cpu, inst.ptr, cpu->A);
+
+		// Base cycle cost
+		cpu->cycles += 5;
+	} break;
+
+	case INX:
+	{
+		// Increment X register
+		cpu->X++;
+
+		// Update Zero and Negative flags
+		SET_FLAG(cpu, FLAG_Z, IS_ZERO(cpu->X));
+		SET_FLAG(cpu, FLAG_N, IS_NEGATIVE(cpu->X));
+
+		// Cycle cost
+		cpu->cycles += 2;
+	} break;
+
+	case JMP:
+	{
+		// Jump to target address
+		cpu->PC = inst.ptr;
+
+		// Cycle cost
+		cpu->cycles += 3;
+	} break;
+}
+
+```
+In this step, we implemented a small set of instructions that are enough to create a simple program.
+
+`LDA_ABS_X` loads a value from memory into the accumulator using an address with an X offset.
+
+`STA_ABS_X` stores the value of the accumulator back into memory, also using an X offset. In our case, this is used to write characters to the output memory.
+
+`INX` increments the X register, which allows us to move through memory step by step.
+
+`BEQ` performs a relative jump if the Zero flag is set, which is used to detect the end of the string.
+
+`JMP` performs an unconditional jump, allowing us to create a loop.
+
+Together these instructions allow us to iterate through a string in memory, output each character, and stop when we reach the end.
+
+---
+
+Now we need a function that loads our assembled program to M6502 memory
+```cpp
+void loadToM6502Memory(
+	M6502 *cpu,
+	const Word addr,
+	const void *bin,
+	Qword size
+) {
+    Byte* d = cpu->mem + addr;
+    const Byte* s = bin;
+
+    while(size--) {
+        *d++ = *s++;
+    }
+}
+```
+This function loads a block of data into the CPU memory starting at a given address. It copies bytes from a source buffer into the CPU memory one by one, and is used to place programs or 
+data (such as our “Hello World” application) into memory before execution begins.
+
+Now on our main entry point we will use our `loadToM6502Memory` to copy our 6502 program to it's memory
+```cpp
+const Byte app[29] = {
+	LDX_IMM, 0x00,
+	LDA_ABS_X, 0x0F, 0x00,
+	BEQ, 0x07,
+	STA_ABS_X, 0x00, 0x02,
+	INX,
+	JMP, 0x02, 0x00,
+	BRK,
+
+	'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!', 0
+};
+
+int main() {
+	M6502 cpu;
+	init6502(&cpu);
+
+	// For simplicity the destination address would be at 0x0000
+	loadToM6502Memory(&cpu, 0x0000, app, 29);
+
+	// start the execution
+	int loop = 1;
+	while (loop > 0) {
+		Instruction inst = fetchInstruction(&cpu);
+		loop = executeInstruction(&cpu, inst);
+	}
+
+	return cpu.X;
+}
+```
+
+Congratulations! Now we are done!
+---
+If we compile and run the code, we will notice that the instructions are executed, but there is no visible output.
+
+This happens because we are writing the result to memory, not directly to the standard output. To see the result, we need to read from the memory location where the output was written and 
+print it.
+
+After the while loop we can add a `printf()` call:
+```cpp
+
+int main() {
+	// code ...
+
+	while(loop > 0) {
+		// code ...
+	}
+	printf("%s", cpu.mem + 0x0200); // 0x0200 is where we output our string on the M6502 memory
+	return cpu.X; // optional
+}
+
+```
+
+The output result will be:
+```
+Hello World!
+```
+
+## Reflection
+This project shows how a simple CPU model can be used to understand basic concepts of low-level programming. By implementing a small set of instructions, it becomes easier to see how 
+programs are executed step by step using registers, memory, and flags.
+
+One of the more difficult parts is understanding control flow, especially how instructions like `BEQ` change the program counter using relative jumps. The use of flags can also be harder to 
+follow at first, since they affect program behavior indirectly.
+
+Overall, this approach helps explain how a CPU works in a simple and clear way. It shows that program execution is based on small operations, and that more complex behavior is built on top 
+of these basic ideas.
 
 Emulating a CPU or even simple one could be easily acheivable for simple CPU instructions 
