@@ -340,7 +340,6 @@ int executeInstruction(
     {
         cpu->cycles += 7; // see for more detail https://6502.org/users/obelisk/6502/reference.html#BRK
 		SET_FLAG(cpu, FLAG_B, 1);
-        return 0;
     }break;
 	// ...
 }
