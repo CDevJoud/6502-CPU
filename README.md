@@ -302,8 +302,8 @@ int main() {
 	init6502(&cpu);
 
 	// we write our first 6502 assembly program that load X register with the value 5
-	cpu.mem[0x8000] = LDX_IMM;
-	cpu.mem[0x8001] = 0x05;
+	cpu.mem[0x0000] = LDX_IMM;
+	cpu.mem[0x0000] = 0x05;
 
 	int loop = 1;
 	while (loop > 0) {
