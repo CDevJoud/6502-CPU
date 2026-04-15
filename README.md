@@ -658,3 +658,5 @@ follow at first, since they affect program behavior indirectly.
 
 Overall, this approach helps explain how a CPU works in a simple and clear way. It shows that program execution is based on small operations, and that more complex behavior is built on top 
 of these basic ideas.
+
+Final [source code](m6502.c)
