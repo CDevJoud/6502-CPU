@@ -260,7 +260,7 @@ Instruction fetchInstruction(
 	M6502* cpu
 ) {
 	// We prepare an instruction object
-	Intstruction inst;
+	Instruction inst;
 	zOut(&inst, sizeof(Instruction));
 
 	// We read a single byte to determine what kind of instruction and check if it's a special address mode
