@@ -658,5 +658,3 @@ follow at first, since they affect program behavior indirectly.
 
 Overall, this approach helps explain how a CPU works in a simple and clear way. It shows that program execution is based on small operations, and that more complex behavior is built on top 
 of these basic ideas.
-
-Emulating a CPU or even simple one could be easily acheivable for simple CPU instructions 
