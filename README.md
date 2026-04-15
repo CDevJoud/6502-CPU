@@ -292,6 +292,7 @@ int executeInstruction(
 		cpu->cycles += 2;
     }break;
 	};
+	return 1;
 }
 ```
 
