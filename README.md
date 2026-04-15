@@ -265,7 +265,7 @@ Instruction fetchInstruction(
 
 	// We read a single byte to determine what kind of instruction and check if it's a special address mode
 	inst.inst = readByte(cpu, cpu->PC++);
-	switch(inst.int) {
+	switch(inst.inst) {
 	default:
 		inst.ptr = readByte(cpu, cpu->PC++);
 		break;
