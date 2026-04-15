@@ -421,7 +421,7 @@ Instruction fetchInstruction(
 
 
 	inst.inst = readByte(cpu, cpu->PC++);
-	switch(inst.int) {
+	switch(inst.inst) {
 
 	case LDA_ABS_X:
 	{
