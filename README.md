@@ -223,5 +223,192 @@ The `fetchInstruction()` function is responsible for reading the next instructio
 
 By keeping these 2 steps separate, the design becomes clearer and easier to understand. It also makes the system more flexible, since it change how instructions are read or executed.
 
+## Implementing Basic Instructions
+Before implementing any CPU instructions we need a function that reset our CPU state!
+
+```cpp
+void init6502(
+	M6502* cpu
+) {
+	cpu->A = cpu->X = cpu->Y = 0;
+	cpu->PC = 0x8000;
+	cpu->flags = FLAG_Z;
+	cpu->SP = 0x01FF;
+	cpu->cycles = 0;
+	zOut(cpu->mem, 0xFFFF);
+}
+```
+This function initializes the CPU to a known starting state.
+
+It resets all registers(A, X, Y) to zero, sets the Program Counter `PC` to the address `0x8000`, and initializes the flags register. The stack pointer is set to
+it's default position, and the entire memory is cleared to zero.
+
+---
+### LDX_IMM
+
+The first instruction we will cover is the load X Register with immediate addressing mode, in code:
+```cpp
+#define LDX_IMM 0xA2
+```
+What this instruction does, it load the X register with immediate data instead of loading from a memory address, for example `LDX #$05` the value 5 get inserted in the X register
+and the immediate mode is marked by using `#`. If we wanted to load from a memory address we would use `LDX $0005`. You might also see that `LDX $05` and `LDX $0005` are the same thing but 
+they are actually 2 different instructions and it depends on how the assembler interpret them.
+
+Now we update `fetchInstruction()` and `executeInstruction` with `LDX_IMM`:
+```cpp
+Instruction fetchInstruction(
+	M6502* cpu
+) {
+	// We prepare an instruction object
+	Intstruction inst;
+	zOut(&inst, sizeof(Instruction));
+
+	// We read a single byte to determine what kind of instruction and check if it's a special address mode
+	inst.inst = readByte(cpu, cpu->PC++);
+	switch(inst.int) {
+	default:
+		inst.ptr = readByte(cpu, cpu->PC++);
+		break;
+	};
+	return inst;
+}
+```
+
+```cpp
+int executeInstruction(
+	M6502* cpu,
+	Instruction inst
+) {
+	switch(inst.inst) {
+	// LDX with immediate mode addressing example LDX #$05
+	case LDX_IMM:
+    {
+		// we insert the immediate value to the register directly
+        cpu->X = inst.ptr;
+		// Set the appropriate flags
+        SET_FLAG(cpu, FLAG_Z, IS_ZERO(cpu->X));
+        SET_FLAG(cpu, FLAG_N, IS_NEGATIVE(cpu->X));
+		// How many cpu cycles it took to perform the action
+		cpu->cycles += 2;
+    }break;
+	};
+}
+```
+
+Now we will create a MOS 6502 cpu instance in the main entry point.
+```cpp
+int main() {
+	M6502 cpu;
+	init6502(&cpu);
+
+	// we write our first 6502 assembly program that load X register with the value 5
+	cpu.mem[0x8000] = LDX_IMM;
+	cpu.mem[0x8001] = 0x05;
+
+	int loop = 1;
+	while (loop > 0) {
+		Instruction inst = fetchInstruction(&cpu);
+		loop = executeInstruction(&cpu, inst);
+	}
+
+	// we return the value of X register which is 5
+	return cpu.X;	
+}
+```
+
+The above code was the simplest 6502 assembly program but you will notice that it loops infinitely. The reason is that we previously cleared the whole memory with zero and there is no logic 
+in the `executeInstruction` to deal with that value so it just skips it and loops infinitely. The fix is to introduce a break instruction.
+
+## BRK
+We define The break instructions as follow
+```cpp
+#define BRK 0x00
+```
+
+Now we update `executeInstruction` with `BRK`:
+
+```cpp
+int executeInstruction(
+	M6502* cpu,
+	Instruction inst
+) {
+	switch(inst.inst) {
+	// ...
+	// above code
+	case BRK:
+    {
+        cpu->cycles += 7; // see for more detail https://6502.org/users/obelisk/6502/reference.html#BRK
+		SET_FLAG(cpu, FLAG_B, 1);
+        return 0;
+    }break;
+	// ...
+}
+```
+Now when we launch our program u will notice it exits with a return value of 5!
+Cool! Now how do we get it to printing `Hello World!`?
+
+## High level algorithm of writing `Hello World!`
+First we start by setting an index register (X) to 0. This index will be used to go through each character in the string.
+
+Then, we load a character from memory using the base address of the string plus the index. This gives us the current character we wamt to process.
+
+Next, we check if the character is equal to 0. This value is used as a terminator to mark the end of the string.
+
+If the value is 0 the program stops. Otherwise, the character is written to the output location in memory.
+
+After theat, we increment the index register so that we can move to the next character.
+
+This process repeats until the end of the string is reached.
+
+### The 6502 assembly code would look like this
+```asm
+		LDX #$00		; X = 0 (string index)
+LOOP:	LDA $000F,X		; load character from string base + X
+		BEQ END			; if character == 0, stop
+
+		STA $0200,X		; write character to output memory
+		INX 			; X++
+
+		JMP LOOP		; repeat
+
+END:	BRK				; stop execution
+
+		.byte "Hello World!", 0
+```
+There are 2 important instructions that need to be covered and the first one is:
+```asm
+	LDA $000F,X
+```
+This instruction loads a value from memory into the accumulator using a 16-bit base address, adds the X register to it, and reads the byte from that final address into the accumulator
+```asm
+	STA $0200,X
+```
+The second instruction stores the value of the accumulator into memory using absolute addressing with X indexing.
+So the CPU calculates the final address using the base address + X, then writes the accumulator value into that memory location.
+
+---
+but the problem is we don't have an assembler to assemble our code! luckily I have already assembled it by hand but before I could provide it, first we need to define the new instructions 
+that we have discovered!
+```cpp
+#define LDA_ABS_X 0xBD
+#define BEQ 0xF0
+#define STA_ABS_X 0x9D
+#define INX 0xE8
+#define JMP 0x4C
+```
+And the assembled code:
+```cpp
+const Byte app[29] = {
+    LDX_IMM, 0x00,
+    LDA_ABS_X, 0x0F, 0x00,
+    BEQ, 0x07, // Performs a relative jump if the Zero flag is set, otherwise execution continues normally.
+    STA_ABS_X, 0x00, 0x02,
+    INX, // Increment the X register by one
+    JMP, 0x02, 0x00, // This instructions jump to a memory location, basically it changes the Program Counter to new memory address
+    BRK,
+
+    'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!', 0
+};
+```
 
 Emulating a CPU or even simple one could be easily acheivable for simple CPU instructions 
